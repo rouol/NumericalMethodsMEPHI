@@ -1,21 +1,20 @@
 import math, sys
 import numpy as np
 
-import numba
-
 
 class HyperbolicPartialDifferentialEquation:
-
-    u = None
-    xs = list()
-    ts = list()
-    is_solved = False
+    # __slots__ = 'u', 'xs', 'ts', 'is_solved', 'offset_h', 'offset_tau', \
+    #     'f', 'g', 'q', 'phi', 'psi', \
+    #     'left_coefficients', 'right_coefficients', 'space_interval', \
+    #     'T', 'h', 'tau'
 
     def __init__(self, f, g, q, phi, psi,
         left_coefficients: tuple[float], 
         right_coefficients: tuple[float], 
         space_interval: tuple[float], 
         T: float, h: float, tau: float) -> None:
+
+        self.is_solved = False
 
         self.left_coefficients = np.array(left_coefficients)
         self.right_coefficients = np.array(right_coefficients)
@@ -24,7 +23,6 @@ class HyperbolicPartialDifferentialEquation:
         self.h = h
         self.tau = tau
 
-        # parse function strings
         self.f = f
         self.g = g
         self.q = q
@@ -46,41 +44,15 @@ class HyperbolicPartialDifferentialEquation:
         if (self.h < sys.float_info.epsilon):
             raise(Exception("Very small step"))
 
-        
-
-        # first_x: float = self.space_interval[0] + self.h
-        # next_first_x: float = self.space_interval[0] + 2*self.h
-        # previous_first_x: float = self.space_interval[0]
-
         x_t = np.array([self.space_interval[0] + self.h, self.tau])
         next_x_t = np.array([self.space_interval[0] + 2 * self.h, self.tau])
         previous_x_t = np.array([self.space_interval[0], self.tau])
-
-
-        # minimum: float = self.f(first_x) * self.g(first_x)
-        # maximum: float = math.pow(self.f(first_x) * \
-        #     (self.g(next_first_x) - self.g(previous_first_x) / 4), 2) \
-        #     + \
-        #     math.pow(self.f(first_x) * self.g(first_x), 2)
 
         minimum: float = self.f(x_t[0], x_t[1]) * self.g(x_t[0], x_t[1])
         maximum: float = math.pow(self.f(x_t[0], x_t[1]) * \
             (self.g(next_x_t[0], next_x_t[1]) - self.g(previous_x_t[0], previous_x_t[1]) / 4), 2) \
             + \
             math.pow(self.f(x_t[0], x_t[1]) * self.g(x_t[0], x_t[1]), 2)
-        
-        # for x in np.arange(self.space_interval[0] + 2*self.h,
-        #     self.space_interval[1],
-        #     self.h):
-        #     next_x: float = x + self.h
-        #     previous_x: float = x - self.h
-        #     right_expression: float = self.f(x) * self.g(x)
-        #     left_expression: float = math.pow(self.f(x) * \
-        #         (self.g(next_x) - self.g(previous_x) / 4), 2) \
-        #         + \
-        #         math.pow(self.f(x) * self.g(x), 2)
-        #     minimum = right_expression if right_expression < minimum else minimum
-        #     maximum = left_expression if left_expression > maximum else maximum
 
         while x_t[1] < self.T:
             while x_t[0] < self.space_interval[1]:
@@ -120,6 +92,8 @@ class HyperbolicPartialDifferentialEquation:
             raise Exception("Very big step")
 
         self.is_solved = False
+        self.xs = list()
+        self.ts = list()
 
     def Solution(self) -> np.array:
         if not self.is_solved:
@@ -136,13 +110,8 @@ class HyperbolicPartialDifferentialEquation:
             self.Solve()
         return self.ts
     
-    @numba.jit
     def Solve(self) -> None:
         last_three_layers = np.zeros((3, math.ceil((self.space_interval[1] - self.space_interval[0]) / self.h) + 1))
-
-        # x: float = self.space_interval[0]
-        # next_x: float = self.space_interval[0] + self.h
-        # previous_x: float = self.space_interval[0] - self.h
 
         x_t_0 = np.array([self.space_interval[0], 0])
         next_x_t_0 = np.array([self.space_interval[0] + self.h, 0])
@@ -160,17 +129,6 @@ class HyperbolicPartialDifferentialEquation:
             if n % self.offset_h == 0:
                 self.u[0][int(n / self.offset_h)] = last_three_layers[0][n]
                 self.xs.append(x_t_0[0])
-            
-            # last_three_layers[1][n] = self.phi(x) + self.tau * self.psi(x) + \
-            #     self.f(x) * self.tau * self.tau / 2 * \
-            #     ((self.g(next_x) - self.g(previous_x)) / \
-            #         (2 * self.h) * \
-            #         (self.phi(next_x) - self.phi(previous_x)) / \
-            #         (2 * self.h) \
-            #         + \
-            #         self.g(x) * (self.phi(next_x) - \
-            #             2 * self.phi(x) + \
-            #             self.phi(previous_x)) / (self.h * self.h))
 
             last_three_layers[1][n] = self.phi(x_t_1[0]) + self.tau * self.psi(x_t_1[0]) + \
                 self.f(x_t_1[0], x_t_1[1]) * self.tau * self.tau / 2 * \
@@ -195,10 +153,6 @@ class HyperbolicPartialDifferentialEquation:
             next_x_t_1[0] += self.h
             previous_x_t_1[0] += self.h
 
-        # x = self.space_interval[1]
-        # next_x = self.space_interval[1] + self.h
-        # previous_x = self.space_interval[1] - self.h
-
         x_t_0 = np.array([self.space_interval[1], 0])
         next_x_t_0 = np.array([self.space_interval[1] + self.h, 0])
         previous_x_t_0 = np.array([self.space_interval[1] - self.h, 0])
@@ -207,20 +161,9 @@ class HyperbolicPartialDifferentialEquation:
         next_x_t_1 = np.array([self.space_interval[1] + self.h, self.tau])
         previous_x_t_1 = np.array([self.space_interval[1] - self.h, self.tau])
 
-        # last_three_layers[0][last_three_layers.shape[1] - 1] = self.phi(x)
-        # self.u[0][self.u.shape[1] - 1] = last_three_layers[0][last_three_layers.shape[1] - 1]
-        # self.xs.append(x)
-
         last_three_layers[0][last_three_layers.shape[1] - 1] = self.phi(x_t_0[0])
         self.u[0][self.u.shape[1] - 1] = last_three_layers[0][last_three_layers.shape[1] - 1]
         self.xs.append(x_t_0[0])
-
-
-        # last_three_layers[1][last_three_layers.shape[1] - 1] = self.phi(x) + self.tau * self.psi(x) + \
-        #     self.f(x) * self.tau * self.tau / 2 * ((self.g(next_x) - self.g(previous_x)) / \
-        #         (2 * self.h) * (self.phi(next_x) - self.phi(previous_x)) / \
-        #         (2 * self.h) + self.g(x) * (self.phi(next_x) - 2 * self.phi(x) + \
-        #         self.phi(previous_x)) / (self.h * self.h))
 
         last_three_layers[1][last_three_layers.shape[1] - 1] = self.phi(x_t_1[0]) + \
             self.tau * self.psi(x_t_1[0]) + \
@@ -242,24 +185,10 @@ class HyperbolicPartialDifferentialEquation:
             self.u[1][self.u.shape[1] - 1] = last_three_layers[1][last_three_layers.shape[1] - 1]
 
         for m in range(2, math.ceil(self.T / self.tau), 1):
-            # x = self.space_interval[0] + self.h
-            # next_x = self.space_interval[0] + 2 * self.h
-            # previous_x = self.space_interval[0]
             x_t = np.array([self.space_interval[0] + self.h, m * self.tau])
             next_x_t = np.array([self.space_interval[0] + 2 * self.h, m * self.tau])
             previous_x_t = np.array([self.space_interval[0], m * self.tau])
             for n in range(1, last_three_layers.shape[1] - 1, 1):
-                # last_three_layers[2][n] = 2 * last_three_layers[1][n] - last_three_layers[0][n] + \
-                #         self.tau * self.tau * self.f(x) * ( \
-                #         (self.g(next_x) - self.g(previous_x)) * \
-                #         (last_three_layers[1][n + 1] - last_three_layers[1][n - 1]) / \
-                #         (4 * self.h * self.h) \
-                #         + \
-                #         self.g(x) * \
-                #         (last_three_layers[1][n + 1] - \
-                #             2 * last_three_layers[1][n] + \
-                #             last_three_layers[1][n - 1]) / \
-                #         (self.h * self.h))
                 last_three_layers[2][n] = 2 * last_three_layers[1][n] - last_three_layers[0][n] + \
                     self.tau * self.tau * self.f(x_t[0], x_t[1]) * ( \
                         (self.g(next_x_t[0], next_x_t[1]) - self.g(previous_x_t[0], previous_x_t[1])) * \
@@ -275,9 +204,6 @@ class HyperbolicPartialDifferentialEquation:
 
                 if (m % self.offset_tau == 0 and n % self.offset_h == 0):
                     self.u[int(m / self.offset_tau)][int(n / self.offset_h)] = last_three_layers[2][n]
-                # x += self.h
-                # next_x += self.h
-                # previous_x += self.h
                 x_t[0] += self.h
                 next_x_t[0] += self.h
                 previous_x_t[0] += self.h
@@ -306,30 +232,13 @@ class HyperbolicPartialDifferentialEquation:
             last_three_layers[1] = last_three_layers[2]
             last_three_layers[2] = np.zeros((math.ceil((self.space_interval[1] - self.space_interval[0]) / self.h) + 1))
 
-        #m == std::ceil(self.T / self.tau) :
         last_tau: float = self.T - (math.ceil(self.T / self.tau) - 1) * self.tau
-
-        # x = self.space_interval[0] + self.h
-        # next_x = self.space_interval[0] + 2 * self.h
-        # previous_x = self.space_interval[0]
 
         x_t = np.array([self.space_interval[0] + self.h, self.T])
         next_x_t = np.array([self.space_interval[0] + 2 * self.h, self.T])
         previous_x_t = np.array([self.space_interval[0], self.T])
 
         for n in range(1, last_three_layers.shape[1] - 1, 1):
-            # last_three_layers[2][n] = (self.tau + last_tau) / self.tau * last_three_layers[1][n] - \
-            #     last_tau / self.tau * last_three_layers[0][n] + \
-            #     last_tau * (last_tau + self.tau) / 2 * self.f(x) * ( \
-            #         (self.g(next_x) - self.g(previous_x)) * \
-            #         (last_three_layers[1][n + 1] - last_three_layers[1][n - 1]) / \
-            #         (4 * self.h * self.h) \
-            #         + \
-            #         self.g(x) * \
-            #         (last_three_layers[1][n + 1] - \
-            #             2 * last_three_layers[1][n] + \
-            #             last_three_layers[1][n - 1]) / \
-            #         (self.h * self.h))
             last_three_layers[2][n] = (self.tau + last_tau) / self.tau * last_three_layers[1][n] - \
                 last_tau / self.tau * last_three_layers[0][n] + \
                 last_tau * (last_tau + self.tau) / 2 * self.f(x_t[0], x_t[1]) * ( \
@@ -345,9 +254,6 @@ class HyperbolicPartialDifferentialEquation:
                     self.tau * self.tau * self.q(x_t[0], x_t[1])
             if n % self.offset_h == 0:
                 self.u[self.u.shape[0] - 1][int(n / self.offset_h)] = last_three_layers[2][n]
-            # x += self.h
-            # next_x += self.h
-            # previous_x += self.h
             x_t[0] += self.h
             next_x_t[0] += self.h
             previous_x_t[0] += self.h
